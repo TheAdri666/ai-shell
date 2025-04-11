@@ -5,8 +5,6 @@ A lightweight, privacy-focused AI assistant that enhances your terminal with int
 > ✨ Powered by [Zsh](https://www.zsh.org/) and [Ollama](https://ollama.com/)  
 > 🧩 Built for Linux.
 
----
-
 ## 📌 Features
 
 - 💡 Real-time suggestions as you type in the terminal
@@ -14,8 +12,6 @@ A lightweight, privacy-focused AI assistant that enhances your terminal with int
 - 🧠 Based on local LLMs like `mistral`, `llama2`, etc.
 - ⌨️ Seamless integration with Zsh prompt
 - ⛏️ Open-source and extensible
-
----
 
 ## 🚀 Getting Started
 
@@ -26,8 +22,6 @@ Make sure you have the following installed:
 - [Zsh](https://www.zsh.org/)
 - [Python 3.7+](https://www.python.org/)
 - [Ollama](https://ollama.com/) (for running the language model locally)
-
----
 
 ### 📥 Installation
 
