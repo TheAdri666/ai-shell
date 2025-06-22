@@ -1,89 +1,120 @@
 #!/usr/bin/env python3
 import sys
+import asyncio
 import subprocess
 import os
-import asyncio
 
-def extract_recent_commands(history_file: str, num_commands: int = 30) -> list[str]:
-    """
-    Extract recent commands from the Zsh history file.
+HISTORY_PATH = os.path.expanduser("~/.zsh_history")
+MAX_RETRIES = 3
 
-    Args:
-        history_file (str): The path to the Zsh history file.
-        num_commands (int): The number of commands to extract. Defaults to 30.
+def extract_recent_commands(num_commands=30) -> list[str]:
+    if not os.path.exists(HISTORY_PATH):
+        return []
 
-    Returns:
-        list[str]: A list of recent commands.
-    """
+    with open(HISTORY_PATH, "r", encoding="utf-8", errors="ignore") as f:
+        lines = f.readlines()[-num_commands:]
 
-    recent_commands: list[str] = []
+    commands = []
+    for line in lines:
+        if ";" in line:
+            parts = line.split(";", 1)
+            command = parts[1].strip()
+            commands.append(command)
+    return commands
+
+def is_syntax_valid(command: str) -> bool:
     try:
-        with open(history_file, "r", encoding="utf-8", errors="ignore") as file:
-            lines: list[str] = file.readlines()[-num_commands:]
-            for line in lines:
-                if len(line.split(";")) > 1:
-                    _, command, *_ = line.split(";")
-                    recent_commands.append(command.strip())
-    except FileNotFoundError:
-        pass
-    return recent_commands
+        subprocess.run(
+            ["zsh", "-n", "-c", command],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True
+        )
+        return True
+    except subprocess.CalledProcessError:
+        return False
 
-async def get_ai_suggestion(prompt: str, recent_commands: list[str]) -> str: 
-    """
-    Get an AI generated suggestion based on the prompt given and a list of recent commands if available.
+def is_likely_valid_command(command: str, original: str) -> bool:
+    # Quitar espacios al principio y final
+    command = command.strip()
+    
+    # Rechazar si contiene saltos de línea (probable explicación o bloque)
+    if "\n" in command:
+        return False
+    
+    # Rechazar si contiene palabras que delaten explicación
+    banned_words = ["this", "command", "will", "does", "you can", "try", "note", "sorry"]
+    if any(word in command.lower() for word in banned_words):
+        return False
 
-    Args:
-        prompt (str): The prompt to generate a suggestion for.
-        recent_commands (list[str]): A list of recent commands to use as context.
+    # Rechazar si el comando es idéntico al original (no ha completado nada)
+    if command.strip() == original.strip():
+        return False
 
-    Returns:
-        str: The AI generated suggestion.
-    """
+    # Rechazar si el comando no contiene el original
+    if original.strip() not in command:
+        return False
 
-    full_prompt: str = f"""
-        You are an intelligent shell command autocomplete assistant. Based on the current command and recent history, suggest a **full command** that is relevant and enhances the input.
-        Focus on preserving the original input without changing it at all but making it more specific or complete. 
-        Make sure the output is only a complete command that could be ran in the terminal and **nothing else.**
-        **Current command:** {prompt}
-        **Recent commands for context:** {recent_commands}
-        Make sure the suggestion is **relevant** to the current context, and **do not simply repeat** the current input. Use the recent history to make your suggestions more accurate and specific.
-        """
+    # Validar sintaxis zsh
+    return is_syntax_valid(command)
 
-    try:
-        process: subprocess.CompletedProcess = await asyncio.create_subprocess_exec(
-            "ollama", "run", "codegemma", full_prompt,
+async def get_ai_suggestion(prompt: str, recent_commands: list[str]) -> str:
+    context = "\n".join(recent_commands)
+
+    full_prompt = f"""
+You are an expert Zsh shell assistant.
+Given the partial command below, respond with a single valid, executable Zsh command that extends or completes it meaningfully.
+You must:
+- Include the entire original input command,
+- Add relevant flags, options, or arguments to make it a useful, practical command,
+- Never just repeat the input command without additions,
+- Output only one valid command, no explanations or comments.
+- Not include any styling such as markdown.
+- Verify whether or not the context given is useful to autocomplete the command and use it if it is.
+
+Examples:
+Current command: cd /home/user
+Completion: cd /home/user && ls -lah
+
+Current command: git status
+Completion: git status --short
+
+Current command: ls
+Completion: ls -lh --color=auto
+
+Now complete the following command:
+
+Current command: {prompt}
+Recent commands: {context}
+"""
+
+    for attempt in range(MAX_RETRIES):
+        process = await asyncio.create_subprocess_exec(
+            "ollama", "run", "deepseek-coder-v2:16b",
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
+            stderr=asyncio.subprocess.DEVNULL,
         )
 
-        # Read the output and error (if any)
-        stdout, stderr = await process.communicate()
-        
-        # Check if there were any errors
-        if process.returncode != 0:
-            print(f"Error: {stderr.decode().strip()}", file=sys.stderr)
-            return ""
-        
-        return stdout.decode().strip()
+        stdout, _ = await process.communicate(full_prompt.encode())
+        suggestion = stdout.decode().strip()
 
-    except FileNotFoundError:
-        print("Ollama is not installed or not in PATH.", file=sys.stderr)
-        sys.exit(1)
+        if is_likely_valid_command(suggestion, prompt):
+            return suggestion
 
-def main() -> None:
+    return ""  # Fallback if all retries fail
+
+async def main():
     if len(sys.argv) < 2:
-        print("Usage: ai-shell.py <command>")
-        sys.exit(1)
+        print("")  # Empty output for empty input
+        return
 
-    prompt: str = " ".join(sys.argv[1:])
+    current_input = " ".join(sys.argv[1:]).strip()
+    recent = extract_recent_commands()
 
-    history_file: str = os.path.expanduser("~/.zsh_history")
-
-    recent_commands: list[str] = extract_recent_commands(history_file)
-
-    ai_suggestion: str = asyncio.run(get_ai_suggestion(prompt, recent_commands))
-
-    print(ai_suggestion)
+    suggestion = await get_ai_suggestion(current_input, recent)
+    print(suggestion)
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
+
