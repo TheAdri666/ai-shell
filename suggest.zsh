@@ -49,17 +49,21 @@ function ai_accept_suggestion() {
   fi
 }
 
-# On any input: clear suggestion + insert char
+# On any input
 function ai_wrap_self_insert() {
-  ai_clear_suggestion_display
-  AI_SUGGESTION=""
+  if [[ -n "$AI_SUGGESTION" ]]; then
+    ai_clear_suggestion_display
+    AI_SUGGESTION=""
+  fi
   zle .self-insert
 }
 
 # On backspace
 function ai_wrap_backward_delete_char() {
-  ai_clear_suggestion_display
-  AI_SUGGESTION=""
+  if [[ -n "$AI_SUGGESTION" ]]; then
+    ai_clear_suggestion_display
+    AI_SUGGESTION=""
+  fi
   zle .backward-delete-char
 }
 
@@ -70,7 +74,7 @@ zle -N ai_wrap_self_insert
 zle -N ai_wrap_backward_delete_char
 
 # Bind keys
-bindkey '^I' ai_accept_suggestion                      # Tab
-bindkey self-insert ai_wrap_self_insert                # Typing
-bindkey backward-delete-char ai_wrap_backward_delete_char # Backspace
-bindkey '^[p' ai_preview_suggestion                    # Alt+P preview
+bindkey self-insert ai_wrap_self_insert # Typing
+bindkey '^?' ai_wrap_backward_delete_char # Backspace
+bindkey '^I' ai_accept_suggestion # Tab
+bindkey '^[p' ai_preview_suggestion # Alt+P preview
