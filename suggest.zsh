@@ -1,61 +1,76 @@
-# Only run in interactive shells with ZLE
-if  [[ ! -o interactive ]]; then
-  echo "Shell is not interactive, ai suggestions are unavailable." | tee /tmp/ai-shell.log
+# Only run in interactive shells
+if [[ ! -o interactive ]]; then
+  echo "Shell is not interactive, AI suggestions are unavailable." | tee /tmp/ai-shell.log
   return
 fi
 
-# Path to AI shell script
 AI_SHELL_PATH="$HOME/.ai-shell/ai-shell.py"
-
-# Variable for suggestion
 AI_SUGGESTION=""
 
+# Clear suggestion from display
+function ai_clear_suggestion_display() {
+  printf '\e7'    # Save cursor
+  printf '\e[0K'  # Clear to end of line
+  printf '\e8'    # Restore cursor
+}
+
+# Show gray suggestion
 function ai_preview_suggestion() {
   local input="$LBUFFER"
   local output addition
 
-  # Run AI script
+  # Run AI
   output="$(python3 "$AI_SHELL_PATH" "$input")"
 
-  # Always clear old suggestion first:
-  echo -ne "\e7"          # save cursor
-  echo -ne "\e[0K"        # clear to end of line
+  # Clear old
+  ai_clear_suggestion_display
 
-  # Only show suggestion if output is valid and extends input
   if [[ -n "$output" && "$output" != "$input" && "$output" == "$input"* ]]; then
     addition="${output#$input}"
-
-    # Save cursor
-    echoti sc
-    # Clear to end of line
-    echoti el
-    # Display suggestion in gray
-    printf "\e[90m%s\e[0m" "$addition"
-    # Restore cursor
-    echoti rc
+    printf '\e7'        # Save cursor
+    printf '\e[90m%s\e[0m' "$addition"
+    printf '\e8'        # Restore cursor
+    AI_SUGGESTION="$output"
+  else
+    AI_SUGGESTION=""
   fi
-
-  # Store suggestion globally
-  AI_SUGGESTION="$output"
 }
 
+# Accept suggestion
 function ai_accept_suggestion() {
   local input="$LBUFFER"
-  if [[ -n "$AI_SUGGESTION" && "$AI_SUGGESTION" != "$input" && "$AI_SUGGESTION" == "$input"* ]]; then
+  if [[ -n "$AI_SUGGESTION" && "$AI_SUGGESTION" == "$input"* ]]; then
     local addition="${AI_SUGGESTION#$input}"
     LBUFFER+="$addition"
+    AI_SUGGESTION=""
     zle reset-prompt
   else
-    # Optionally fallback to normal Tab behavior
     zle expand-or-complete
   fi
 }
 
+# On any input: clear suggestion + insert char
+function ai_wrap_self_insert() {
+  ai_clear_suggestion_display
+  AI_SUGGESTION=""
+  zle .self-insert
+}
 
-# Now define widgets
+# On backspace
+function ai_wrap_backward_delete_char() {
+  ai_clear_suggestion_display
+  AI_SUGGESTION=""
+  zle .backward-delete-char
+}
+
+# Define widgets
 zle -N ai_preview_suggestion
 zle -N ai_accept_suggestion
+zle -N ai_wrap_self_insert
+zle -N ai_wrap_backward_delete_char
 
 # Bind keys
-bindkey '^[p' ai_preview_suggestion
-bindkey '^I' ai_accept_suggestion
+bindkey '^I' ai_accept_suggestion                      # Tab
+bindkey self-insert ai_wrap_self_insert                # Typing
+bindkey backward-delete-char ai_wrap_backward_delete_char # Backspace
+bindkey '^[p' ai_preview_suggestion                    # Alt+P preview
