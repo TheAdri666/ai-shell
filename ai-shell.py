@@ -3,6 +3,7 @@ import sys
 import asyncio
 import subprocess
 import os
+import signal
 
 HISTORY_PATH = os.path.expanduser("~/.zsh_history")
 MAX_RETRIES = 3
@@ -104,7 +105,11 @@ Recent commands: {context}
 
     return ""  # Fallback if all retries fail
 
+def ignore_sigint():
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+
 async def main():
+    ignore_sigint()
     if len(sys.argv) < 2:
         print("")  # Empty output for empty input
         return
