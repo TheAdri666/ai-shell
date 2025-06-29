@@ -12,6 +12,7 @@ AI_IDLE_TIMER_FD=0
 AI_LAST_INPUT_TIME=0
 AI_TIMER_FIFO="/tmp/ai_idle_timer_fifo_$$"
 AI_PREVIEW_GENERATED=0
+AI_COMPLETION_ACTIVE=0
 
 # Clear suggestion from display
 function ai_clear_suggestion_display() {
@@ -24,7 +25,7 @@ function ai_clear_suggestion_display() {
 function ai_preview_suggestion() {
   local input="$LBUFFER"
 
-  if [[ "$input" == "$AI_LAST_INPUT" || $AI_PREVIEW_GENERATED == 1 ]]; then
+  if (( AI_COMPLETION_ACTIVE )) || [[ "$input" == "$AI_LAST_INPUT" || $AI_PREVIEW_GENERATED == 1 ]]; then
     return
   fi
 
@@ -57,7 +58,7 @@ function ai_accept_suggestion() {
     AI_LAST_INPUT=""
     zle reset-prompt
   else
-    zle expand-or-complete
+    zle ai_wrap_expand_or_complete
   fi
   AI_PREVIEW_GENERATED=0
 }
@@ -72,6 +73,7 @@ function ai_wrap_self_insert() {
   fi
   zle .self-insert
   AI_PREVIEW_GENERATED=0
+  AI_COMPLETION_ACTIVE=0
 }
 
 # Special char ñ input
@@ -84,6 +86,7 @@ function ai_wrap_self_insert_ñ() {
   fi
   LBUFFER+="ñ"
   AI_PREVIEW_GENERATED=0
+  AI_COMPLETION_ACTIVE=0
 }
 
 # On backspace: reset timer & clear suggestion
@@ -96,6 +99,7 @@ function ai_wrap_backward_delete_char() {
   fi
   zle .backward-delete-char
   AI_PREVIEW_GENERATED=0
+  AI_COMPLETION_ACTIVE=0
 }
 
 # On enter: clear suggestion
@@ -106,7 +110,13 @@ function ai_wrap_accept_line() {
     AI_LAST_INPUT=""
   fi
   AI_PREVIEW_GENERATED=0
+  AI_COMPLETION_ACTIVE=0
   zle .accept-line
+}
+
+function ai_wrap_expand_or_complete() {
+  AI_COMPLETION_ACTIVE=1
+  zle expand-or-complete
 }
 
 # Called by periodic timer (via zle -F)
@@ -117,7 +127,7 @@ function ai_idle_check() {
   local now=$(date +%s)
   local elapsed=$(( now - AI_LAST_INPUT_TIME ))
 
-  if (( elapsed >= AI_IDLE_TIMEOUT  && AI_PREVIEW_GENERATED == 0)); then
+  if (( elapsed >= AI_IDLE_TIMEOUT  && AI_PREVIEW_GENERATED == 0 && AI_COMPLETION_ACTIVE == 0 )); then
     zle -M ""  # Clear messages
     zle ai_preview_suggestion
     ai_reset_idle_timer
@@ -136,6 +146,7 @@ zle -N ai_wrap_self_insert
 zle -N ai_wrap_self_insert_ñ
 zle -N ai_wrap_backward_delete_char
 zle -N ai_wrap_accept_line
+zle -N ai_wrap_expand_or_complete
 
 # Bind keys
 function bind_ai_wrap_self_insert() {
