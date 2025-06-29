@@ -25,7 +25,13 @@ function ai_clear_suggestion_display() {
 function ai_preview_suggestion() {
   local input="$LBUFFER"
 
+  # Do not preview if completion is active, input has not changed or preview has already been generated
   if (( AI_COMPLETION_ACTIVE )) || [[ "$input" == "$AI_LAST_INPUT" || $AI_PREVIEW_GENERATED == 1 ]]; then
+    return
+  fi
+
+  # Only preview if cursor is at the end of LBUFFER
+  if [[ -n "$RBUFFER" ]]; then
     return
   fi
 
@@ -119,6 +125,48 @@ function ai_wrap_expand_or_complete() {
   zle expand-or-complete
 }
 
+function ai_wrap_forward_char() {
+  ai_reset_idle_timer
+  zle .forward-char
+  AI_COMPLETION_ACTIVE=0
+  AI_PREVIEW_GENERATED=0
+}
+
+function ai_wrap_backward_char() {
+  ai_reset_idle_timer
+  zle .backward-char
+  AI_COMPLETION_ACTIVE=0
+  AI_PREVIEW_GENERATED=0
+}
+
+function ai_wrap_up_line() {
+  ai_reset_idle_timer
+  zle .up-line-or-history
+  AI_COMPLETION_ACTIVE=0
+  AI_PREVIEW_GENERATED=0
+}
+
+function ai_wrap_down_line() {
+  ai_reset_idle_timer
+  zle .down-line-or-history
+  AI_COMPLETION_ACTIVE=0
+  AI_PREVIEW_GENERATED=0
+}
+
+function ai_wrap_beginning_of_line() {
+  ai_reset_idle_timer
+  zle .beginning-of-line
+  AI_COMPLETION_ACTIVE=0
+  AI_PREVIEW_GENERATED=0
+}
+
+function ai_wrap_end_of_line() {
+  ai_reset_idle_timer
+  zle .end-of-line
+  AI_COMPLETION_ACTIVE=0
+  AI_PREVIEW_GENERATED=0
+}
+
 # Called by periodic timer (via zle -F)
 function ai_idle_check() {
   # Drain FIFO input to prevent blocking
@@ -147,6 +195,12 @@ zle -N ai_wrap_self_insert_ñ
 zle -N ai_wrap_backward_delete_char
 zle -N ai_wrap_accept_line
 zle -N ai_wrap_expand_or_complete
+zle -N ai_wrap_forward_char
+zle -N ai_wrap_backward_char
+zle -N ai_wrap_up_line
+zle -N ai_wrap_down_line
+zle -N ai_wrap_beginning_of_line 
+zle -N ai_wrap_end_of_line
 
 # Bind keys
 function bind_ai_wrap_self_insert() {
@@ -164,6 +218,12 @@ bindkey '^?' ai_wrap_backward_delete_char # Backspace
 bindkey '^I' ai_accept_suggestion # Tab
 bindkey '^[p' ai_preview_suggestion # Alt+P preview
 bindkey '^M' ai_wrap_accept_line # Enter
+bindkey '^F' ai_wrap_forward-char   # right arrow
+bindkey '^B' ai_wrap_backward-char  # left arrow
+bindkey '^P' ai_wrap_up-line        # up arrow
+bindkey '^N' ai_wrap_down-line      # down arrow
+bindkey '^[OH' ai_wrap_beginning-of-line  # Ctrl-A for beginning of line
+bindkey '^[OF' ai_wrap_end-of-line        # Ctrl-E for end of line
 
 # Load datetime module
 zmodload zsh/datetime
