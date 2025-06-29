@@ -7,7 +7,7 @@ fi
 AI_SHELL_PATH="$HOME/.ai-shell/ai-shell.py"
 AI_SUGGESTION=""
 AI_LAST_INPUT=""
-AI_IDLE_TIMEOUT=1  # seconds idle before showing suggestion
+AI_IDLE_TIMEOUT=2  # seconds idle before showing suggestion
 AI_IDLE_TIMER_FD=0
 AI_LAST_INPUT_TIME=0
 AI_TIMER_FIFO="/tmp/ai_idle_timer_fifo_$$"
