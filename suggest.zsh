@@ -140,17 +140,15 @@ function ai_wrap_backward_char() {
 }
 
 function ai_wrap_up_line() {
-  echo Up
   ai_reset_idle_timer
-  zle .up-line-or-beginning-search
+  zle up-line-or-beginning-search
   AI_COMPLETION_ACTIVE=0
   AI_PREVIEW_GENERATED=0
 }
 
 function ai_wrap_down_line() {
-  echo Down
   ai_reset_idle_timer
-  zle .down-line-or-beginning-search
+  zle down-line-or-beginning-search
   AI_COMPLETION_ACTIVE=0
   AI_PREVIEW_GENERATED=0
 }
@@ -244,8 +242,8 @@ bindkey '^[p' ai_preview_suggestion # Alt+P preview
 bindkey '^M' ai_wrap_accept_line # Enter
 bindkey '^F' ai_wrap_forward_char # right arrow
 bindkey '^B' ai_wrap_backward_char # left arrow
-bindkey '^[[A' ai_wrap_up_line # up arrow
-bindkey '^[[B' ai_wrap_down_line # down arrow
+bindkey '^[OA' ai_wrap_up_line # up arrow
+bindkey '^[OB' ai_wrap_down_line # down arrow
 bindkey '^[OH' ai_wrap_beginning_of_line # Ctrl-A for beginning of line
 bindkey '^[OF' ai_wrap_end_of_line # Ctrl-E for end of line
 
