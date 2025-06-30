@@ -140,15 +140,17 @@ function ai_wrap_backward_char() {
 }
 
 function ai_wrap_up_line() {
+  echo Up
   ai_reset_idle_timer
-  zle .up-line-or-history
+  zle .up-line-or-beginning-search
   AI_COMPLETION_ACTIVE=0
   AI_PREVIEW_GENERATED=0
 }
 
 function ai_wrap_down_line() {
+  echo Down
   ai_reset_idle_timer
-  zle .down-line-or-history
+  zle .down-line-or-beginning-search
   AI_COMPLETION_ACTIVE=0
   AI_PREVIEW_GENERATED=0
 }
@@ -183,8 +185,9 @@ ai_handle_sigint() {
 }
 
 function TRAPINT() {
-  zle -M "" # Clear messages
-  zle ai_handle_sigint
+  if zle -M "" 2>/dev/null; then
+    zle ai_handle_sigint
+  fi
 }
 
 # Called by periodic timer (via zle -F)
@@ -241,8 +244,8 @@ bindkey '^[p' ai_preview_suggestion # Alt+P preview
 bindkey '^M' ai_wrap_accept_line # Enter
 bindkey '^F' ai_wrap_forward_char # right arrow
 bindkey '^B' ai_wrap_backward_char # left arrow
-bindkey '^P' ai_wrap_up_line # up arrow
-bindkey '^N' ai_wrap_down_line # down arrow
+bindkey '^[[A' ai_wrap_up_line # up arrow
+bindkey '^[[B' ai_wrap_down_line # down arrow
 bindkey '^[OH' ai_wrap_beginning_of_line # Ctrl-A for beginning of line
 bindkey '^[OF' ai_wrap_end_of_line # Ctrl-E for end of line
 
