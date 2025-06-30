@@ -239,12 +239,12 @@ bindkey '^?' ai_wrap_backward_delete_char # Backspace
 bindkey '^I' ai_accept_suggestion # Tab
 bindkey '^[p' ai_preview_suggestion # Alt+P preview
 bindkey '^M' ai_wrap_accept_line # Enter
-bindkey '^F' ai_wrap_forward-char # right arrow
-bindkey '^B' ai_wrap_backward-char # left arrow
-bindkey '^P' ai_wrap_up-line # up arrow
-bindkey '^N' ai_wrap_down-line # down arrow
-bindkey '^[OH' ai_wrap_beginning-of-line # Ctrl-A for beginning of line
-bindkey '^[OF' ai_wrap_end-of-line # Ctrl-E for end of line
+bindkey '^F' ai_wrap_forward_char # right arrow
+bindkey '^B' ai_wrap_backward_char # left arrow
+bindkey '^P' ai_wrap_up_line # up arrow
+bindkey '^N' ai_wrap_down_line # down arrow
+bindkey '^[OH' ai_wrap_beginning_of_line # Ctrl-A for beginning of line
+bindkey '^[OF' ai_wrap_end_of_line # Ctrl-E for end of line
 
 # Load datetime module
 zmodload zsh/datetime
