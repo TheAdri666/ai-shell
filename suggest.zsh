@@ -14,6 +14,10 @@ AI_TIMER_FIFO="/tmp/ai_idle_timer_fifo_$$"
 AI_PREVIEW_GENERATED=0
 AI_COMPLETION_ACTIVE=0
 
+AI_PY_PID=0
+AI_PY_OUTPUT_FILE="/tmp/ai_shell_output_$$"
+AI_PY_RUNNING=0
+
 # Clear suggestion from display
 function ai_clear_suggestion_display() {
   printf '\e7'    # Save cursor
@@ -22,36 +26,41 @@ function ai_clear_suggestion_display() {
 }
 
 # Show gray suggestion only if input changed since last time
+# Runs python asynchronously without blocking
 function ai_preview_suggestion() {
   local input="$LBUFFER"
 
-  # Do not preview if completion is active, input has not changed or preview has already been generated
+  # Do not preview if completion active, input unchanged, or preview already generated
   if (( AI_COMPLETION_ACTIVE )) || [[ "$input" == "$AI_LAST_INPUT" || $AI_PREVIEW_GENERATED == 1 ]]; then
     return
   fi
 
-  # Only preview if cursor is at the end of LBUFFER
+  # Only preview if cursor at end of LBUFFER
   if [[ -n "$RBUFFER" ]]; then
     return
   fi
 
-  AI_PREVIEW_GENERATED=1
-  AI_LAST_INPUT="$input"
-
-  local output addition
-  output="$(python3 "$AI_SHELL_PATH" "$input")"
-
-  ai_clear_suggestion_display
-
-  if [[ -n "$output" && "$output" != "$input" && "$output" == "$input"* ]]; then
-    addition="${output#$input}"
-    printf '\e7'
-    printf '\e[90m%s\e[0m' "$addition"
-    printf '\e8'
-    AI_SUGGESTION="$output"
-  else
-    AI_SUGGESTION=""
+  # Kill previous python job if still running to keep only one
+  if (( AI_PY_RUNNING )) && kill -0 $AI_PY_PID 2>/dev/null; then
+    kill $AI_PY_PID 2>/dev/null
+    wait $AI_PY_PID 2>/dev/null
   fi
+
+  AI_PREVIEW_GENERATED=0
+  AI_LAST_INPUT="$input"
+  AI_PY_RUNNING=1
+
+  # Disable job control messages
+  set +m
+
+  # Run python async, silently redirect output to temp file
+  python3 "$AI_SHELL_PATH" "$input" > "$AI_PY_OUTPUT_FILE" 2>/dev/null &
+
+  AI_PY_PID=$!
+  disown
+
+  # Re-enable job control messages
+  set -m
 }
 
 # Accept suggestion
@@ -196,7 +205,39 @@ function ai_idle_check() {
   local now=$(date +%s)
   local elapsed=$(( now - AI_LAST_INPUT_TIME ))
 
-  if (( elapsed >= AI_IDLE_TIMEOUT  && AI_PREVIEW_GENERATED == 0 && AI_COMPLETION_ACTIVE == 0 )); then
+  # Check if python process finished
+  if (( AI_PY_RUNNING )); then
+    if ! kill -0 $AI_PY_PID 2>/dev/null; then
+      # Python finished
+      AI_PY_RUNNING=0
+      if [[ -f "$AI_PY_OUTPUT_FILE" ]]; then
+        local output input="$AI_LAST_INPUT" addition
+        output=$(<"$AI_PY_OUTPUT_FILE")
+        rm -f "$AI_PY_OUTPUT_FILE"
+
+        if [[ -n "$output" && "$output" != "$input" && "$output" == "$input"* ]]; then
+          addition="${output#$input}"
+
+          ai_clear_suggestion_display
+          printf '\e7'
+          printf '\e[90m%s\e[0m' "$addition"
+          printf '\e8'
+
+          AI_SUGGESTION="$output"
+          AI_PREVIEW_GENERATED=1
+        else
+          AI_SUGGESTION=""
+          AI_PREVIEW_GENERATED=0
+        fi
+      fi
+      # Reset idle timer so that repeated previews don't flood
+      ai_reset_idle_timer
+      return
+    fi
+  fi
+
+  # If no python running and idle time passed, start new preview
+  if (( elapsed >= AI_IDLE_TIMEOUT && AI_PREVIEW_GENERATED == 0 && AI_COMPLETION_ACTIVE == 0 && AI_PY_RUNNING == 0 )); then
     zle -M ""  # Clear messages
     zle ai_preview_suggestion
     ai_reset_idle_timer
@@ -237,15 +278,15 @@ function bind_ai_wrap_self_insert() {
 bind_ai_wrap_self_insert
 
 bindkey '^?' ai_wrap_backward_delete_char # Backspace
-bindkey '^I' ai_accept_suggestion # Tab
-bindkey '^[p' ai_preview_suggestion # Alt+P preview
-bindkey '^M' ai_wrap_accept_line # Enter
-bindkey '^F' ai_wrap_forward_char # right arrow
-bindkey '^B' ai_wrap_backward_char # left arrow
-bindkey '^[OA' ai_wrap_up_line # up arrow
-bindkey '^[OB' ai_wrap_down_line # down arrow
-bindkey '^[OH' ai_wrap_beginning_of_line # Ctrl-A for beginning of line
-bindkey '^[OF' ai_wrap_end_of_line # Ctrl-E for end of line
+bindkey '^I' ai_accept_suggestion           # Tab
+bindkey '^[p' ai_preview_suggestion         # Alt+P preview
+bindkey '^M' ai_wrap_accept_line             # Enter
+bindkey '^F' ai_wrap_forward_char            # right arrow
+bindkey '^B' ai_wrap_backward_char           # left arrow
+bindkey '^[OA' ai_wrap_up_line               # up arrow
+bindkey '^[OB' ai_wrap_down_line             # down arrow
+bindkey '^[OH' ai_wrap_beginning_of_line    # Ctrl-A for beginning of line
+bindkey '^[OF' ai_wrap_end_of_line           # Ctrl-E for end of line
 
 # Load datetime module
 zmodload zsh/datetime
@@ -270,7 +311,6 @@ mkfifo $AI_TIMER_FIFO
 # Save PID to kill later
 AI_TIMER_PID=$!
 
-
 # Open FIFO fd for reading, save to AI_IDLE_TIMER_FD
 exec {AI_IDLE_TIMER_FD}<>$AI_TIMER_FIFO
 
@@ -283,5 +323,11 @@ function ai_cleanup() {
   exec {AI_IDLE_TIMER_FD}>&-
   kill $AI_TIMER_PID 2>/dev/null
   rm -f $AI_TIMER_FIFO
+  rm -f $AI_PY_OUTPUT_FILE
+  # Also kill python job if running
+  if (( AI_PY_RUNNING )) && kill -0 $AI_PY_PID 2>/dev/null; then
+    kill $AI_PY_PID 2>/dev/null
+    wait $AI_PY_PID 2>/dev/null
+  fi
 }
 TRAPEXIT() { ai_cleanup }
