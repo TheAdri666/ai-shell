@@ -3,7 +3,6 @@ import sys
 import asyncio
 import subprocess
 import os
-import signal
 
 HISTORY_PATH = os.path.expanduser("~/.zsh_history")
 MAX_RETRIES = 3
@@ -16,7 +15,7 @@ def extract_recent_commands(num_commands=30) -> list[str]:
         lines = f.readlines()[-num_commands:]
 
     commands = []
-    for line in lines:
+    for line in lines: # Read actual command, ignore timestamps.
         if ";" in line:
             parts = line.split(";", 1)
             command = parts[1].strip()
@@ -25,7 +24,7 @@ def extract_recent_commands(num_commands=30) -> list[str]:
 
 def is_syntax_valid(command: str) -> bool:
     try:
-        subprocess.run(
+        subprocess.run( # Read command (-c) without running it (-n) and check for errors.
             ["zsh", "-n", "-c", command],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
@@ -36,27 +35,27 @@ def is_syntax_valid(command: str) -> bool:
         return False
 
 def is_likely_valid_command(command: str, original: str) -> bool:
-    # Quitar espacios al principio y final
+    # Remove spaces at the beginning and end. 
     command = command.strip()
     
-    # Rechazar si contiene saltos de línea (probable explicación o bloque)
+    # Reject if output command contains line breaks (probable explanation or block).
     if "\n" in command:
         return False
     
-    # Rechazar si contiene palabras que delaten explicación
+    # Reject if output command contains words that indicate an explanation.
     banned_words = ["this", "command", "will", "does", "you can", "try", "note", "sorry"]
     if any(word in command.lower() for word in banned_words):
         return False
 
-    # Rechazar si el comando es idéntico al original (no ha completado nada)
+    # Reject if the command is identical to the original (nothing was completed).
     if command.strip() == original.strip():
         return False
 
-    # Rechazar si el comando no contiene el original
+    # Reject if output command does not contain the original. 
     if original.strip() not in command:
         return False
 
-    # Validar sintaxis zsh
+    # Validate zsh syntax
     return is_syntax_valid(command)
 
 async def get_ai_suggestion(prompt: str, recent_commands: list[str]) -> str:
@@ -89,7 +88,7 @@ Current command: {prompt}
 Recent commands: {context}
 """
 
-    for attempt in range(MAX_RETRIES):
+    for _attempt in range(MAX_RETRIES): # Try to generate a valid suggestion MAX_RETRIES times.
         process = await asyncio.create_subprocess_exec(
             "ollama", "run", "deepseek-coder-v2:16b",
             stdin=asyncio.subprocess.PIPE,
@@ -105,16 +104,12 @@ Recent commands: {context}
 
     return ""  # Fallback if all retries fail
 
-def ignore_sigint():
-    signal.signal(signal.SIGINT, signal.SIG_IGN)
-
 async def main():
-    ignore_sigint()
     if len(sys.argv) < 2:
-        print("")  # Empty output for empty input
+        print("")  # Empty output for empty input.
         return
 
-    current_input = " ".join(sys.argv[1:]).strip()
+    current_input = " ".join(sys.argv[1:]).strip() # Current command in input.
     recent = extract_recent_commands()
 
     suggestion = await get_ai_suggestion(current_input, recent)
