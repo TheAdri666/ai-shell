@@ -4,6 +4,17 @@ if [[ ! -o interactive ]]; then
   return
 fi
 
+# Check dependencies
+command -v python3 >/dev/null || {
+    echo "python3 not found"
+    return
+}
+
+command -v ollama >/dev/null || {
+    echo "ollama not found"
+    return
+}
+
 AI_SHELL_PATH="$HOME/.ai-shell/ai-shell.py"
 AI_SUGGESTION=""
 AI_LAST_INPUT=""
@@ -15,8 +26,14 @@ AI_PREVIEW_GENERATED=0
 AI_COMPLETION_ACTIVE=0
 
 AI_PY_PID=0
-AI_PY_OUTPUT_FILE="/tmp/ai_shell_output_$$"
+AI_PY_OUTPUT_FILE=$(mktemp)
 AI_PY_RUNNING=0
+
+# Check if backend exists
+[[ -x "$AI_SHELL_PATH" ]] || {
+    echo "Backend not found: $AI_SHELL_PATH"
+    return
+}
 
 # Clear suggestion from display
 function clear_suggestion_display() {
@@ -28,7 +45,10 @@ function clear_suggestion_display() {
 # Show gray suggestion only if input changed since last time
 # Runs python asynchronously without blocking
 function generate_suggestion() {
-  local input="$LBUFFER"
+  local input="$BUFFER"
+
+  # Don't generate suggestions for an empty command
+  [[ -z "$input" ]] && return
 
   # Do not preview if completion active, input unchanged, or preview already generated
   if (( AI_COMPLETION_ACTIVE )) || [[ "$input" == "$AI_LAST_INPUT" || $AI_PREVIEW_GENERATED == 1 ]]; then
@@ -42,7 +62,7 @@ function generate_suggestion() {
 
   # Kill previous python job if still running to keep only one
   if (( AI_PY_RUNNING )) && kill -0 $AI_PY_PID 2>/dev/null; then
-    kill $AI_PY_PID 3>/dev/null
+    kill $AI_PY_PID 2>/dev/null
     wait $AI_PY_PID 2>/dev/null
   fi
 
@@ -52,6 +72,12 @@ function generate_suggestion() {
 
   # Disable job control messages
   set +m
+
+  # Remove previous output file if it still exists
+  [[ -n "$AI_PY_OUTPUT_FILE" ]] && rm -f "$AI_PY_OUTPUT_FILE"
+
+  # Create a fresh temporary file
+  AI_PY_OUTPUT_FILE=$(mktemp)
 
   # Run python async, silently redirect output to temp file
   python3 "$AI_SHELL_PATH" "$input" > "$AI_PY_OUTPUT_FILE" 2>/dev/null &
@@ -86,6 +112,7 @@ function hide_suggestion() {
   fi
   AI_PREVIEW_GENERATED=0
   AI_COMPLETION_ACTIVE=0
+  zle redisplay
 }
 
 # On any input: reset idle timer & clear suggestion
@@ -100,6 +127,13 @@ function ai_wrap_self_insert_ñ() {
   reset_idle_timer
   hide_suggestion
   LBUFFER+="ñ"
+}
+
+# Special char º input
+function ai_wrap_self_insert_º() {
+  reset_idle_timer
+  hide_suggestion
+  LBUFFER+="º"
 }
 
 # On backspace: reset timer & clear suggestion
@@ -158,6 +192,11 @@ function ai_wrap_end_of_line() {
 
 handle_sigint() {
   hide_suggestion
+  if (( AI_PY_RUNNING )) && kill -0 $AI_PY_PID 2>/dev/null; then
+    kill $AI_PY_PID 2>/dev/null
+    wait $AI_PY_PID 2>/dev/null
+    AI_PY_RUNNING=0
+  fi
   LBUFFER=""
   RBUFFER=""
   zle reset-prompt
@@ -172,11 +211,11 @@ function TRAPINT() {
 
 # Called by periodic timer (via zle -F)
 function idle_check() {
-  # Drain FIFO input to prevent blocking
+  # Drain the FIFO so future timer events can be detected correctly.
   read -r -t 0.01 <&$AI_IDLE_TIMER_FD || true
 
-  local now=$(date +%s)
-  local elapsed=$(( now - AI_LAST_INPUT_TIME ))
+  local now=$EPOCHREALTIME
+  local elapsed=$(( EPOCHREALTIME - AI_LAST_INPUT_TIME ))
 
   # Check if python process finished
   if (( AI_PY_RUNNING )); then
@@ -185,6 +224,7 @@ function idle_check() {
       AI_PY_RUNNING=0
       if [[ -f "$AI_PY_OUTPUT_FILE" ]]; then
         local output input="$AI_LAST_INPUT" addition
+        # "<" is a zsh shortcut for cat, faster since it avoids spawning the cat program
         output=$(<"$AI_PY_OUTPUT_FILE")
         rm -f "$AI_PY_OUTPUT_FILE"
 
@@ -219,7 +259,7 @@ function idle_check() {
 
 # Reset last input time on any input
 function reset_idle_timer() {
-  AI_LAST_INPUT_TIME=$(date +%s)
+  AI_LAST_INPUT_TIME=$EPOCHREALTIME
 }
 
 # Define widgets
@@ -227,6 +267,7 @@ zle -N generate_suggestion
 zle -N accept_suggestion
 zle -N ai_wrap_self_insert
 zle -N ai_wrap_self_insert_ñ
+zle -N ai_wrap_self_insert_º
 zle -N ai_wrap_backward_delete_char
 zle -N ai_wrap_accept_line
 zle -N ai_wrap_expand_or_complete
@@ -247,6 +288,7 @@ function bind_ai_wrap_self_insert() {
     fi
   done
   bindkey -- "ñ" ai_wrap_self_insert_ñ
+  bindkey -- "º" ai_wrap_self_insert_º
 }
 bind_ai_wrap_self_insert
 
