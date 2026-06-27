@@ -42,7 +42,7 @@ function generate_suggestion() {
 
   # Kill previous python job if still running to keep only one
   if (( AI_PY_RUNNING )) && kill -0 $AI_PY_PID 2>/dev/null; then
-    kill $AI_PY_PID 2>/dev/null
+    kill $AI_PY_PID 3>/dev/null
     wait $AI_PY_PID 2>/dev/null
   fi
 
@@ -67,8 +67,8 @@ function generate_suggestion() {
 function accept_suggestion() {
   local input="$LBUFFER"
   if [[ -n "$AI_SUGGESTION" && "$AI_SUGGESTION" == "$input"* ]]; then
-    local addition="${AI_SUGGESTION#$input}"
-    LBUFFER+="$addition"
+    BUFFER="$AI_SUGGESTION"
+    CURSOR=${#BUFFER}
     AI_SUGGESTION=""
     AI_LAST_INPUT=""
     zle reset-prompt
@@ -78,54 +78,40 @@ function accept_suggestion() {
   AI_PREVIEW_GENERATED=0
 }
 
-# On any input: reset idle timer & clear suggestion
-function ai_wrap_self_insert() {
-  reset_idle_timer
+function hide_suggestion() {
   if [[ -n "$AI_SUGGESTION" ]]; then
     clear_suggestion_display
     AI_SUGGESTION=""
     AI_LAST_INPUT=""
   fi
-  zle .self-insert
   AI_PREVIEW_GENERATED=0
   AI_COMPLETION_ACTIVE=0
+}
+
+# On any input: reset idle timer & clear suggestion
+function ai_wrap_self_insert() {
+  reset_idle_timer
+  hide_suggestion
+  zle .self-insert
 }
 
 # Special char ñ input
 function ai_wrap_self_insert_ñ() {
   reset_idle_timer
-  if [[ -n "$AI_SUGGESTION" ]]; then
-    clear_suggestion_display
-    AI_SUGGESTION=""
-    AI_LAST_INPUT=""
-  fi
+  hide_suggestion
   LBUFFER+="ñ"
-  AI_PREVIEW_GENERATED=0
-  AI_COMPLETION_ACTIVE=0
 }
 
 # On backspace: reset timer & clear suggestion
 function ai_wrap_backward_delete_char() {
   reset_idle_timer
-  if [[ -n "$AI_SUGGESTION" ]]; then
-    clear_suggestion_display
-    AI_SUGGESTION=""
-    AI_LAST_INPUT=""
-  fi
+  hide_suggestion
   zle .backward-delete-char
-  AI_PREVIEW_GENERATED=0
-  AI_COMPLETION_ACTIVE=0
 }
 
 # On enter: clear suggestion
 function ai_wrap_accept_line() {
-  if [[ -n "$AI_SUGGESTION" ]]; then
-    clear_suggestion_display
-    AI_SUGGESTION=""
-    AI_LAST_INPUT=""
-  fi
-  AI_PREVIEW_GENERATED=0
-  AI_COMPLETION_ACTIVE=0
+  hide_suggestion
   zle .accept-line
 }
 
@@ -136,55 +122,42 @@ function ai_wrap_expand_or_complete() {
 
 function ai_wrap_forward_char() {
   reset_idle_timer
+  hide_suggestion
   zle .forward-char
-  AI_COMPLETION_ACTIVE=0
-  AI_PREVIEW_GENERATED=0
 }
 
 function ai_wrap_backward_char() {
   reset_idle_timer
+  hide_suggestion
   zle .backward-char
-  AI_COMPLETION_ACTIVE=0
-  AI_PREVIEW_GENERATED=0
 }
 
 function ai_wrap_up_line() {
   reset_idle_timer
+  hide_suggestion
   zle up-line-or-beginning-search
-  AI_COMPLETION_ACTIVE=0
-  AI_PREVIEW_GENERATED=0
 }
 
 function ai_wrap_down_line() {
   reset_idle_timer
+  hide_suggestion
   zle down-line-or-beginning-search
-  AI_COMPLETION_ACTIVE=0
-  AI_PREVIEW_GENERATED=0
 }
 
 function ai_wrap_beginning_of_line() {
   reset_idle_timer
+  hide_suggestion
   zle .beginning-of-line
-  AI_COMPLETION_ACTIVE=0
-  AI_PREVIEW_GENERATED=0
 }
 
 function ai_wrap_end_of_line() {
   reset_idle_timer
+  hide_suggestion
   zle .end-of-line
-  AI_COMPLETION_ACTIVE=0
-  AI_PREVIEW_GENERATED=0
 }
 
 handle_sigint() {
-  if [[ -n "$AI_SUGGESTION" ]]; then
-    clear_suggestion_display
-    AI_SUGGESTION=""
-    AI_LAST_INPUT=""
-    AI_PREVIEW_GENERATED=0
-    AI_COMPLETION_ACTIVE=0
-  fi
-
+  hide_suggestion
   LBUFFER=""
   RBUFFER=""
   zle reset-prompt
