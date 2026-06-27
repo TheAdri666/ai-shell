@@ -91,7 +91,7 @@ function generate_suggestion() {
 
 # Accept suggestion
 function accept_suggestion() {
-  local input="$LBUFFER"
+  local input="$BUFFER"
   if [[ -n "$AI_SUGGESTION" && "$AI_SUGGESTION" == "$input"* ]]; then
     BUFFER="$AI_SUGGESTION"
     CURSOR=${#BUFFER}
@@ -112,28 +112,6 @@ function hide_suggestion() {
   fi
   AI_PREVIEW_GENERATED=0
   AI_COMPLETION_ACTIVE=0
-  zle redisplay
-}
-
-# On any input: reset idle timer & clear suggestion
-function ai_wrap_self_insert() {
-  reset_idle_timer
-  hide_suggestion
-  zle .self-insert
-}
-
-# Special char ñ input
-function ai_wrap_self_insert_ñ() {
-  reset_idle_timer
-  hide_suggestion
-  LBUFFER+="ñ"
-}
-
-# Special char º input
-function ai_wrap_self_insert_º() {
-  reset_idle_timer
-  hide_suggestion
-  LBUFFER+="º"
 }
 
 # On backspace: reset timer & clear suggestion
@@ -143,8 +121,9 @@ function ai_wrap_backward_delete_char() {
   zle .backward-delete-char
 }
 
-# On enter: clear suggestion
+# on enter: clear suggestion
 function ai_wrap_accept_line() {
+  reset_idle_timer
   hide_suggestion
   zle .accept-line
 }
@@ -154,40 +133,34 @@ function ai_wrap_expand_or_complete() {
   zle expand-or-complete
 }
 
-function ai_wrap_forward_char() {
+function ai_wrap_up_line_or_beginning_search() {
   reset_idle_timer
   hide_suggestion
-  zle .forward-char
+  zle .up-line-or-beginning-search
 }
 
-function ai_wrap_backward_char() {
+function ai_wrap_up_line_or_history() {
   reset_idle_timer
   hide_suggestion
-  zle .backward-char
+  zle .up-line-or-history
 }
 
-function ai_wrap_up_line() {
+function ai_wrap_down_line_or_beginning_search() {
   reset_idle_timer
   hide_suggestion
-  zle up-line-or-beginning-search
+  zle .down-line-or-beginning-search
 }
 
-function ai_wrap_down_line() {
+function ai_wrap_down_line_or_history() {
   reset_idle_timer
   hide_suggestion
-  zle down-line-or-beginning-search
+  zle .down-line-or-history
 }
 
-function ai_wrap_beginning_of_line() {
+function ai_wrap_self_insert() {
   reset_idle_timer
   hide_suggestion
-  zle .beginning-of-line
-}
-
-function ai_wrap_end_of_line() {
-  reset_idle_timer
-  hide_suggestion
-  zle .end-of-line
+  zle .self-insert
 }
 
 handle_sigint() {
@@ -262,46 +235,27 @@ function reset_idle_timer() {
   AI_LAST_INPUT_TIME=$EPOCHREALTIME
 }
 
-# Define widgets
+# Define new widgets
 zle -N generate_suggestion
 zle -N accept_suggestion
-zle -N ai_wrap_self_insert
-zle -N ai_wrap_self_insert_ñ
-zle -N ai_wrap_self_insert_º
-zle -N ai_wrap_backward_delete_char
-zle -N ai_wrap_accept_line
 zle -N ai_wrap_expand_or_complete
-zle -N ai_wrap_forward_char
-zle -N ai_wrap_backward_char
-zle -N ai_wrap_up_line
-zle -N ai_wrap_down_line
-zle -N ai_wrap_beginning_of_line 
-zle -N ai_wrap_end_of_line
 zle -N handle_sigint
 
-# Bind keys
-function bind_ai_wrap_self_insert() {
-  for code in {32..126}; do
-    local key=$(printf "\\$(printf '%03o' $code)")
-    if [[ "$key" != "-" ]]; then
-      bindkey -- "$key" ai_wrap_self_insert
-    fi
-  done
-  bindkey -- "ñ" ai_wrap_self_insert_ñ
-  bindkey -- "º" ai_wrap_self_insert_º
-}
-bind_ai_wrap_self_insert
+# Some widgets are not defined by default, so we store them before overriding
+zle -N .up-line-or-beginning-search up-line-or-beginning-search
+zle -N .down-line-or-beginning-search down-line-or-beginning-search
 
-bindkey '^?' ai_wrap_backward_delete_char # Backspace
+# Override widgets with their wrappers
+zle -N backward-delete-char ai_wrap_backward_delete_char
+zle -N accept-line ai_wrap_accept_line
+zle -N up-line-or-beginning-search ai_wrap_up_line_or_beginning_search
+zle -N up-line-or-history ai_wrap_up_line_or_history
+zle -N down-line-or-history ai_wrap_down_line_or_history
+zle -N down-line-or-beginning-search ai_wrap_down_line_or_beginning_search
+zle -N self-insert ai_wrap_self_insert
+
 bindkey '^I' accept_suggestion           # Tab
 bindkey '^[p' generate_suggestion         # Alt+P preview
-bindkey '^M' ai_wrap_accept_line             # Enter
-bindkey '^F' ai_wrap_forward_char            # right arrow
-bindkey '^B' ai_wrap_backward_char           # left arrow
-bindkey '^[OA' ai_wrap_up_line               # up arrow
-bindkey '^[OB' ai_wrap_down_line             # down arrow
-bindkey '^[OH' ai_wrap_beginning_of_line    # Ctrl-A for beginning of line
-bindkey '^[OF' ai_wrap_end_of_line           # Ctrl-E for end of line
 
 # Load datetime module
 zmodload zsh/datetime
